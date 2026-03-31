@@ -1,0 +1,346 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../generated/prisma"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model discord_users {
+  id                       String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  discord_user_id          String                    @unique @db.VarChar(50)
+  username                 String                    @db.VarChar(255)
+  created_at               DateTime                  @default(now()) @db.Timestamp(6)
+  updated_at               DateTime                  @updatedAt @db.Timestamp(6)
+  course_generation_usages course_generation_usages[]
+  discord_members          discord_members[]
+  owned_discord_guilds     discord_guilds[]          @relation("discord_guild_owner")
+}
+
+model discord_guilds {
+  id                      String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  discord_guild_id        String         @unique @db.VarChar(50)
+  name                    String         @db.VarChar(255)
+  owner_discord_user_id   String?        @db.VarChar(50)
+  owner_discord_user_uuid String?        @db.Uuid
+  timezone                String         @default("Asia/Seoul") @db.VarChar(100)
+  main_channel_id         String?        @db.VarChar(50)
+  quiz_channel_id         String?        @db.VarChar(50)
+  answer_channel_id       String?        @db.VarChar(50)
+  created_at              DateTime       @default(now()) @db.Timestamp(6)
+  updated_at              DateTime       @updatedAt @db.Timestamp(6)
+  discord_members         discord_members[]
+  study_plans             study_plans[]
+  owner_discord_user      discord_users? @relation("discord_guild_owner", fields: [owner_discord_user_uuid], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([owner_discord_user_uuid], map: "idx_discord_guilds_owner_discord_user_uuid")
+}
+
+model discord_members {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  guild_uuid          String             @db.Uuid
+  discord_user_id     String             @db.VarChar(50)
+  discord_user_uuid   String?            @db.Uuid
+  username            String             @db.VarChar(255)
+  display_name        String?            @db.VarChar(255)
+  created_at          DateTime           @default(now()) @db.Timestamp(6)
+  updated_at          DateTime           @updatedAt @db.Timestamp(6)
+  created_study_plans study_plans[]      @relation("study_plan_creator")
+  lesson_questions    lesson_questions[]
+  submissions         submissions[]
+  discord_guilds      discord_guilds     @relation(fields: [guild_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  discord_users       discord_users?     @relation(fields: [discord_user_uuid], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@unique([guild_uuid, discord_user_id], map: "uq_discord_members_guild_user")
+  @@index([guild_uuid], map: "idx_discord_members_guild_uuid")
+  @@index([discord_user_uuid], map: "idx_discord_members_discord_user_uuid")
+}
+
+model study_plans {
+  id                   String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  guild_uuid           String          @db.Uuid
+  creator_member_uuid  String          @db.Uuid
+  goal_text            String
+  requested_range_text String?
+  total_days           Int
+  start_date           DateTime?       @db.Date
+  current_day          Int             @default(0)
+  next_publish_at      DateTime?       @db.Timestamp(6)
+  status               plan_status     @default(DRAFT)
+  outline_raw          Json?
+  plan_raw             Json?
+  created_at           DateTime        @default(now()) @db.Timestamp(6)
+  updated_at           DateTime        @updatedAt @db.Timestamp(6)
+  study_days           study_days[]
+  study_day_material_jobs study_day_material_jobs[]
+  creator_member       discord_members @relation("study_plan_creator", fields: [creator_member_uuid], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  discord_guilds       discord_guilds  @relation(fields: [guild_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([guild_uuid], map: "idx_study_plans_guild_uuid")
+  @@index([creator_member_uuid], map: "idx_study_plans_creator_member_uuid")
+}
+
+model study_course_preview_templates {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  total_days     Int
+  course_name    String   @db.VarChar(20)
+  prompt_version Int      @default(1)
+  content_text   String
+  usage_count    Int      @default(0)
+  created_at     DateTime @default(now()) @db.Timestamp(6)
+  updated_at     DateTime @updatedAt @db.Timestamp(6)
+  study_plan_templates study_plan_templates[]
+
+  @@index([total_days, course_name, prompt_version, created_at], map: "idx_study_course_preview_templates_lookup")
+}
+
+model study_plan_templates {
+  id                           String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  course_preview_template_uuid String                         @db.Uuid
+  prompt_version               Int                            @default(1)
+  plan_title                   String                         @db.VarChar(255)
+  goal_text                    String
+  plan_raw                     Json
+  usage_count                  Int                            @default(0)
+  created_at                   DateTime                       @default(now()) @db.Timestamp(6)
+  updated_at                   DateTime                       @updatedAt @db.Timestamp(6)
+  study_course_preview_templates study_course_preview_templates @relation(fields: [course_preview_template_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  study_day_material_templates study_day_material_templates[]
+
+  @@index([course_preview_template_uuid, prompt_version, created_at], map: "idx_study_plan_templates_lookup")
+}
+
+model study_day_material_templates {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  study_plan_template_uuid String           @db.Uuid
+  day_number           Int
+  materials_raw        Json
+  usage_count          Int                  @default(0)
+  created_at           DateTime             @default(now()) @db.Timestamp(6)
+  updated_at           DateTime             @updatedAt @db.Timestamp(6)
+  study_plan_templates study_plan_templates @relation(fields: [study_plan_template_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([study_plan_template_uuid, day_number], map: "uq_study_day_material_templates_plan_day")
+  @@index([study_plan_template_uuid, day_number, created_at], map: "idx_study_day_material_templates_lookup")
+}
+
+model study_days {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  study_plan_uuid  String             @db.Uuid
+  day_number       Int
+  title            String             @db.VarChar(255)
+  topic_summary    String
+  learning_goal    String
+  scope_text       String?
+  status           day_status         @default(PENDING)
+  scheduled_date   DateTime?          @db.Date
+  user_answer_thread_id String?       @unique @db.VarChar(50)
+  user_ask_thread_id String?          @unique @db.VarChar(50)
+  created_at       DateTime           @default(now()) @db.Timestamp(6)
+  updated_at       DateTime           @updatedAt @db.Timestamp(6)
+  day_contents     day_contents?
+  lesson_questions lesson_questions[]
+  quizzes          quizzes?
+  study_day_material_jobs study_day_material_jobs[]
+  study_plans      study_plans        @relation(fields: [study_plan_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([study_plan_uuid, day_number], map: "uq_study_days_plan_day")
+  @@index([study_plan_uuid], map: "idx_study_days_plan_uuid")
+}
+
+model study_day_material_jobs {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  study_plan_uuid       String              @db.Uuid
+  study_day_uuid        String              @unique @db.Uuid
+  study_day_number      Int
+  generation_mode       String?             @db.VarChar(20)
+  batch_id              String?             @db.VarChar(100)
+  batch_status          String?             @db.VarChar(30)
+  requested_at          DateTime?           @db.Timestamp(6)
+  deadline_at           DateTime?           @db.Timestamp(6)
+  ready_at              DateTime?           @db.Timestamp(6)
+  fallback_attempted_at DateTime?           @db.Timestamp(6)
+  status                material_job_status @default(PENDING)
+  attempt_count         Int                 @default(0)
+  last_error_text       String?
+  last_attempted_at     DateTime?           @db.Timestamp(6)
+  completed_at          DateTime?           @db.Timestamp(6)
+  created_at            DateTime            @default(now()) @db.Timestamp(6)
+  updated_at            DateTime            @updatedAt @db.Timestamp(6)
+  study_days            study_days          @relation(fields: [study_day_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  study_plans           study_plans         @relation(fields: [study_plan_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([study_plan_uuid], map: "idx_study_day_material_jobs_plan_uuid")
+  @@index([status, created_at], map: "idx_study_day_material_jobs_status_created_at")
+  @@index([study_day_number], map: "idx_study_day_material_jobs_day_number")
+}
+
+model course_generation_usages {
+  id                String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  discord_user_uuid String                       @db.Uuid
+  usage_date        DateTime                     @db.Date
+  usage_type        course_generation_usage_type
+  request_count     Int                          @default(0)
+  created_at        DateTime                     @default(now()) @db.Timestamp(6)
+  updated_at        DateTime                     @updatedAt @db.Timestamp(6)
+  discord_users     discord_users                @relation(fields: [discord_user_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([discord_user_uuid, usage_date, usage_type], map: "uq_course_generation_usages_user_date_type")
+  @@index([usage_date, usage_type], map: "idx_course_generation_usages_date_type")
+}
+
+model day_contents {
+  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  study_day_uuid     String     @unique @db.Uuid
+  discord_message_id String?    @db.VarChar(50)
+  summary_text       String?
+  content_text       String
+  llm_raw            Json?
+  published_at       DateTime?  @db.Timestamp(6)
+  created_at         DateTime   @default(now()) @db.Timestamp(6)
+  updated_at         DateTime   @updatedAt @db.Timestamp(6)
+  study_days         study_days @relation(fields: [study_day_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model lesson_questions {
+  id                 String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  study_day_uuid     String                 @db.Uuid
+  member_uuid        String                 @db.Uuid
+  discord_channel_id String?                @db.VarChar(50)
+  discord_message_id String?                @db.VarChar(50)
+  question_text      String
+  normalized_text    String?
+  status             lesson_question_status @default(PENDING)
+  created_at         DateTime               @default(now()) @db.Timestamp(6)
+  updated_at         DateTime               @updatedAt @db.Timestamp(6)
+  lesson_answers     lesson_answers[]       @relation("lesson_question_answers")
+  reused_by_answers  lesson_answers[]       @relation("lesson_answer_source_question")
+  discord_members    discord_members        @relation(fields: [member_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  study_days         study_days             @relation(fields: [study_day_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([study_day_uuid], map: "idx_lesson_questions_day_uuid")
+  @@index([member_uuid], map: "idx_lesson_questions_member_uuid")
+}
+
+model lesson_answers {
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  question_uuid        String             @db.Uuid
+  answer_text          String
+  answer_source_type   answer_source_type @default(GENERATED)
+  source_question_uuid String?            @db.Uuid
+  discord_message_id   String?            @db.VarChar(50)
+  llm_raw              Json?
+  created_at           DateTime           @default(now()) @db.Timestamp(6)
+  updated_at           DateTime           @updatedAt @db.Timestamp(6)
+  question             lesson_questions   @relation("lesson_question_answers", fields: [question_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  source_question      lesson_questions?  @relation("lesson_answer_source_question", fields: [source_question_uuid], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([question_uuid], map: "idx_lesson_answers_question_uuid")
+  @@index([source_question_uuid], map: "idx_lesson_answers_source_question_uuid")
+}
+
+model quizzes {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  study_day_uuid     String       @unique @db.Uuid
+  discord_message_id String?      @db.VarChar(50)
+  intro_text         String?
+  published_at       DateTime?    @db.Timestamp(6)
+  created_at         DateTime     @default(now()) @db.Timestamp(6)
+  updated_at         DateTime     @updatedAt @db.Timestamp(6)
+  quiz_items         quiz_items[]
+  study_days         study_days   @relation(fields: [study_day_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model quiz_items {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quiz_uuid         String        @db.Uuid
+  question_no       Int
+  prompt_text       String
+  expected_points   Json?
+  model_answer_text String
+  explanation_text  String
+  created_at        DateTime      @default(now()) @db.Timestamp(6)
+  updated_at        DateTime      @updatedAt @db.Timestamp(6)
+  quiz_hints        quiz_hints[]
+  submissions       submissions[]
+  quizzes           quizzes       @relation(fields: [quiz_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([quiz_uuid, question_no], map: "uq_quiz_items_quiz_question_no")
+  @@index([quiz_uuid], map: "idx_quiz_items_quiz_uuid")
+}
+
+model quiz_hints {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quiz_item_uuid String     @db.Uuid
+  hint_no        Int
+  hint_text      String
+  llm_raw        Json?
+  created_at     DateTime   @default(now()) @db.Timestamp(6)
+  updated_at     DateTime   @updatedAt @db.Timestamp(6)
+  quiz_items     quiz_items @relation(fields: [quiz_item_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([quiz_item_uuid, hint_no], map: "uq_quiz_hints_item_hint_no")
+  @@index([quiz_item_uuid], map: "idx_quiz_hints_item_uuid")
+}
+
+model submissions {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quiz_item_uuid     String              @db.Uuid
+  member_uuid        String              @db.Uuid
+  discord_message_id String?             @db.VarChar(50)
+  answer_text        String
+  status             submission_status   @default(SUBMITTED)
+  created_at         DateTime            @default(now()) @db.Timestamp(6)
+  updated_at         DateTime            @updatedAt @db.Timestamp(6)
+  discord_members    discord_members     @relation(fields: [member_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  quiz_items         quiz_items          @relation(fields: [quiz_item_uuid], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([quiz_item_uuid], map: "idx_submissions_quiz_item_uuid")
+  @@index([member_uuid], map: "idx_submissions_member_uuid")
+}
+
+enum answer_source_type {
+  GENERATED
+  REUSED
+}
+
+enum day_status {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum lesson_question_status {
+  PENDING
+  ANSWERED
+  REUSED
+}
+
+enum plan_status {
+  DRAFT
+  READY
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+enum material_job_status {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum submission_status {
+  SUBMITTED
+  RESPONDED
+}
+
+enum course_generation_usage_type {
+  COURSE_PREVIEW
+  DETAILED_PLAN
+}
