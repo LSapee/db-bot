@@ -146,7 +146,7 @@ docker compose -f docker-compose.deploy.yml logs -f app
 
 ## Discord 설정
 
-이미지 가이드는 `docs/discord_settings`에 있다.
+이미지 가이드는 [docs/discord_settings](https://github.com/LSapee/db-bot/tree/main/docs/discord_settings)에 있다.
 
 기본 순서:
 
