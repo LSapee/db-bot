@@ -96,7 +96,7 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
     if (
       message.channel.isThread() &&
       message.channel.parent?.type === ChannelType.GuildForum &&
-      message.channel.parent.name === 'user_answer'
+      ['user_answer', 'db_quiz'].includes(message.channel.parent.name)
     ) {
       await this.discordUserThreadService.handleAnswerSubmission(message);
       return;
@@ -114,7 +114,7 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
     if (
       message.channel.isThread() &&
       message.channel.parent?.type === ChannelType.GuildForum &&
-      ['db_tutor', 'db_quiz', 'db_answer'].includes(message.channel.parent.name)
+      ['db_tutor', 'db_answer'].includes(message.channel.parent.name)
     ) {
       await this.discordDailyChannelService.handleReadOnlyMessage(message);
     }

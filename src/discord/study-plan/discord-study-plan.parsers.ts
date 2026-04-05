@@ -90,6 +90,25 @@ export function parseUserAnswerThreadContext(threadName: string) {
   };
 }
 
+// Parses the quiz thread name and extracts the date, course, and day context.
+// 문제 스레드 이름에서 날짜, 코스, 일차 정보를 추출한다.
+export function parseQuizThreadContext(threadName: string) {
+  const matchedThreadContext = /^\[(\d{4}-\d{2}-\d{2})\s시작\s(입문자|중급자|상급자)\s코스\s(\d+)일차\]\s\d+일차\s-\s.+\s문제$/.exec(
+    threadName,
+  );
+
+  if (!matchedThreadContext) {
+    return null;
+  }
+
+  return {
+    startedDateText: matchedThreadContext[1],
+    selectedCourseName: matchedThreadContext[2] as StudyCourseName,
+    studyPlanUuid: null,
+    dayNumber: Number(matchedThreadContext[3]),
+  };
+}
+
 // Parses the question thread name and extracts the date, course, and day context.
 // 질문 스레드 이름에서 날짜, 코스, 일차 정보를 추출한다.
 export function parseUserAskThreadContext(threadName: string) {

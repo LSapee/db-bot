@@ -193,6 +193,10 @@ export function formatQuizThreadMessage(
   return [
     `[${studyDay.dayNumber}일차 문제]`,
     `${studyDay.dayNumber}일차 문제와 각 문제별 힌트입니다.`,
+    '이 스레드에 아래 형식으로 답안을 제출할 수 있습니다.',
+    '!제출 문제 1',
+    '```select * \nfrom quizs;```',
+    '각 문제는 최대 3번까지 제출할 수 있습니다.',
     studyDayMaterials.quizIntroText,
     '',
     ...formattedQuizItems,
@@ -266,7 +270,7 @@ export function formatUserAskThreadMessage(studyDay: GeneratedStudyPlanDay) {
   return [
     `[${studyDay.dayNumber}일차 질문 안내]`,
     '이 스레드에서 오늘 학습 내용과 관련된 질문을 남겨주세요.',
-    '질문은 하루에 최대 10번까지 가능합니다.',
+    '질문은 하루에 최대 20번까지 가능합니다.',
     '질문 형식은 아래 예시를 따라주세요.',
     '',
     '!질문 서브쿼리와 조인 차이를 오늘 내용 기준으로 다시 설명해주세요.',

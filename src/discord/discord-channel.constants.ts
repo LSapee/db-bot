@@ -41,7 +41,7 @@ export const discordStudyPlanHelpMessage = [
   '3. 입문자 / 중급자 / 상급자 중 하나 선택',
   '4. 선택한 난이도의 간단 일정을 확인한 뒤 `Y` 입력',
   '5. 상세 일정 확인 후 `시작` 입력',
-  '6. db_tutor / db_quiz / db_answer / user_answer 채널 사용',
+  '6. db_tutor / db_quiz / db_answer / user_ask 채널 사용',
 ].join('\n');
 
 export const discordStudyPlanInvalidDurationMessage = [
@@ -278,11 +278,6 @@ export const discordRequiredChannels = [
   },
   {
     name: 'db_quiz',
-    type: ChannelType.GuildForum,
-    useDailyCategory: true,
-  },
-  {
-    name: 'user_answer',
     type: ChannelType.GuildForum,
     useDailyCategory: true,
   },

@@ -188,7 +188,6 @@ export class DiscordGuildSetupService {
       'db_tutor',
       'db_quiz',
       'db_answer',
-      'user_answer',
       'user_ask',
     ];
 

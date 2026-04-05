@@ -51,7 +51,6 @@ import {
   buildGeneratedStudyDayMaterialsFromStoredDay,
   createEmptyStudyPlanListMessage,
   createStudyDayThreadName,
-  createUserAnswerThreadName,
   createUserAskThreadName,
   formatAnswerThreadMessage,
   formatGeneratedStudyPlanMessage,
@@ -59,12 +58,12 @@ import {
   formatQuizThreadMessage,
   formatStartedDate,
   formatTutorThreadMessage,
-  formatUserAnswerThreadMessage,
   formatUserAskThreadMessage,
   getFirstStudyDay,
   getStudyPlanListTitle,
 } from './discord-study-plan.formatters';
 import {
+  parseQuizThreadContext,
   parseArchivePlanSelection,
   parseCourseSelection,
   parseDurationDays,
@@ -498,8 +497,8 @@ export class DiscordStudyPlanService {
     await this.sendChannelMessage(message, discordStudyPlanWelcomeMessage);
   }
 
-  // Handles user quiz submissions posted inside a user_answer forum thread.
-  // user_answer 포럼 스레드 안에 올라온 사용자 제출 메시지를 처리한다.
+  // Handles user quiz submissions posted inside a db_quiz or legacy user_answer thread.
+  // db_quiz 또는 기존 user_answer 스레드 안에 올라온 사용자 제출 메시지를 처리한다.
   async handleUserAnswerSubmission(message: Message) {
     if (!message.channel.isThread()) {
       return;
@@ -512,6 +511,7 @@ export class DiscordStudyPlanService {
         [
           '제출 형식이 올바르지 않습니다.',
           '문제 번호 아래에 답안을 코드블록으로 작성해서 다시 제출해주세요.',
+          '이 안내 메시지와 작성하신 메시지는 30초 후에 삭제됩니다.',
           '!제출 문제 1',
           '```sql',
           'SELECT *',
@@ -519,8 +519,8 @@ export class DiscordStudyPlanService {
           '```',
         ].join('\n'),
       );
-      this.scheduleMessageDeletion(message, 5 * 60 * 1000);
-      this.scheduleMessageDeletion(invalidSubmissionNotice, 5 * 60 * 1000);
+      this.scheduleMessageDeletion(message, 30 * 1000);
+      this.scheduleMessageDeletion(invalidSubmissionNotice, 30 * 1000);
       return;
     }
 
@@ -528,9 +528,14 @@ export class DiscordStudyPlanService {
       message,
       parsedSubmission.questionNo,
     );
+    const isQuizThread =
+      message.channel.parent?.type === ChannelType.GuildForum &&
+      message.channel.parent.name === 'db_quiz';
     const submissionThreadContext = directSubmissionContext
       ? null
-      : parseUserAnswerThreadContext(message.channel.name);
+      : isQuizThread
+        ? parseQuizThreadContext(message.channel.name)
+        : parseUserAnswerThreadContext(message.channel.name);
     const targetStudyPlan = directSubmissionContext
       ? directSubmissionContext.studyPlan
       : await this.findStudyPlanByThreadContext(message, submissionThreadContext);
@@ -600,10 +605,10 @@ export class DiscordStudyPlanService {
     );
 
     const submissionNotice = await message.reply(
-      `${targetQuizItem.question_no}번 문제 제출을 확인하였습니다. 1분 뒤에 메시지가 지워집니다.`,
+      `${targetQuizItem.question_no}번 문제 제출을 확인하였습니다. 30초 뒤에 메시지가 지워집니다.`,
     );
-    this.scheduleMessageDeletion(message, 2 * 60 * 1000);
-    this.scheduleMessageDeletion(submissionNotice, 2 * 60 * 1000);
+    this.scheduleMessageDeletion(message, 30 * 1000);
+    this.scheduleMessageDeletion(submissionNotice, 30 * 1000);
 
     await this.prismaService.submissions.update({
       where: {
@@ -2326,7 +2331,7 @@ export class DiscordStudyPlanService {
       await message.reply(
         [
           '질문 형식이 올바르지 않습니다.',
-          '질문은 하루에 최대 10번까지 가능합니다.',
+          '질문은 하루에 최대 20번까지 가능합니다.',
           '아래 형식으로 다시 작성해주세요.',
           '!질문 서브쿼리와 조인 차이를 오늘 내용 기준으로 다시 설명해주세요.',
         ].join('\n'),
@@ -2357,8 +2362,8 @@ export class DiscordStudyPlanService {
       },
     });
 
-    if (todayQuestionCount >= 10) {
-      await message.reply('오늘 질문을 이미 10회 사용하셨습니다.');
+    if (todayQuestionCount >= 20) {
+      await message.reply('오늘 질문을 이미 20회 사용하셨습니다.');
       return;
     }
 
@@ -3198,7 +3203,7 @@ export class DiscordStudyPlanService {
           '다음 일차는 각 일정 날짜의 오전 10시에 자동 게시됩니다.',
           '다음 일차가 게시될 때 이후 버퍼 일차 자료도 함께 준비합니다.',
           'db_tutor, db_quiz, db_answer 채널의 새 스레드를 확인해주세요.',
-          '정답 제출은 user_answer 채널, 학습 질문은 user_ask 채널을 사용해주세요.',
+          '정답 제출은 db_quiz 스레드, 학습 질문은 user_ask 채널을 사용해주세요.',
         ].join('\n'),
       );
       await this.preGenerateUpcomingStudyDays(
@@ -4515,13 +4520,15 @@ export class DiscordStudyPlanService {
       const tutorChannel = this.getForumChannelByName(guild, 'db_tutor');
       const quizChannel = this.getForumChannelByName(guild, 'db_quiz');
       const answerChannel = this.getForumChannelByName(guild, 'db_answer');
-      const userAnswerChannel = this.getForumChannelByName(guild, 'user_answer');
       const userAskChannel = this.getForumChannelByName(guild, 'user_ask');
 
       const tutorThread = await this.createForumThreadWithChunks(
         tutorChannel,
         createStudyDayThreadName(startedAt, selectedCourseName, firstStudyDay),
         formatTutorThreadMessage(firstStudyDay, firstDayMaterials),
+        {
+          preserveCodeBlocks: true,
+        },
       );
       createdThreads.push(tutorThread.thread);
 
@@ -4539,13 +4546,6 @@ export class DiscordStudyPlanService {
       );
       createdThreads.push(answerThread.thread);
 
-      const userAnswerThread = await this.createForumThreadWithChunks(
-        userAnswerChannel,
-        createUserAnswerThreadName(startedAt, selectedCourseName, firstStudyDay),
-        formatUserAnswerThreadMessage(firstStudyDay),
-      );
-      createdThreads.push(userAnswerThread.thread);
-
       const userAskThread = await this.createForumThreadWithChunks(
         userAskChannel,
         createUserAskThreadName(startedAt, selectedCourseName, firstStudyDay),
@@ -4557,7 +4557,7 @@ export class DiscordStudyPlanService {
         tutorMessageId: tutorThread.starterMessageId,
         quizMessageId: quizThread.starterMessageId,
         answerMessageId: answerThread.starterMessageId,
-        userAnswerThreadId: userAnswerThread.threadId,
+        userAnswerThreadId: null,
         userAskThreadId: userAskThread.threadId,
       };
     } catch (error) {
@@ -4583,7 +4583,7 @@ export class DiscordStudyPlanService {
       tutorMessageId: string | null;
       quizMessageId: string | null;
       answerMessageId: string | null;
-      userAnswerThreadId: string;
+      userAnswerThreadId: string | null;
       userAskThreadId: string;
     },
   ) {
@@ -4654,8 +4654,15 @@ export class DiscordStudyPlanService {
     forumChannel: ForumChannel,
     threadName: string,
     content: string,
+    options?: {
+      preserveCodeBlocks?: boolean;
+    },
   ) {
-    const contentChunks = this.splitDiscordMessageContent(content);
+    const contentChunks = this.splitDiscordMessageContent(
+      content,
+      1900,
+      options?.preserveCodeBlocks ?? false,
+    );
     const createdThread = await forumChannel.threads.create({
       name: threadName,
       message: {
@@ -4695,7 +4702,44 @@ export class DiscordStudyPlanService {
 
   // Splits long Discord content into safe message-sized chunks while trying to keep paragraph boundaries.
   // 긴 Discord 본문을 문단 경계를 최대한 유지하면서 안전한 길이의 메시지 조각으로 나눈다.
-  private splitDiscordMessageContent(content: string, maxLength = 1900) {
+  private splitDiscordMessageContent(
+    content: string,
+    maxLength = 1900,
+    preserveCodeBlocks = false,
+  ) {
+    if (!preserveCodeBlocks) {
+      return this.splitDiscordPlainTextContent(content, maxLength);
+    }
+
+    const segments = this.splitDiscordContentSegments(content);
+
+    if (segments.length === 1 && segments[0].type === 'text') {
+      return this.splitDiscordPlainTextContent(content, maxLength);
+    }
+
+    const chunks: string[] = [];
+
+    for (const segment of segments) {
+      if (segment.type === 'code') {
+        chunks.push(...this.splitDiscordCodeBlockContent(segment.content, maxLength));
+        continue;
+      }
+
+      const textContent = segment.content.trim();
+
+      if (!textContent) {
+        continue;
+      }
+
+      chunks.push(...this.splitDiscordPlainTextContent(textContent, maxLength));
+    }
+
+    return chunks;
+  }
+
+  // Splits plain text content while trying to keep paragraph and line boundaries.
+  // 일반 텍스트 본문을 문단과 줄 경계를 최대한 보존하며 Discord 길이에 맞게 나눈다.
+  private splitDiscordPlainTextContent(content: string, maxLength: number) {
     if (content.length <= maxLength) {
       return [content];
     }
@@ -4750,6 +4794,104 @@ export class DiscordStudyPlanService {
     }
 
     return chunks;
+  }
+
+  // Breaks content into alternating plain-text and fenced-code segments so code blocks stay intact.
+  // 코드블록이 잘리지 않도록 일반 텍스트와 fenced code block 세그먼트로 분리한다.
+  private splitDiscordContentSegments(content: string) {
+    const codeBlockPattern = /```[^\n]*\n?[\s\S]*?```/g;
+    const segments: Array<{ type: 'text' | 'code'; content: string }> = [];
+    let currentIndex = 0;
+
+    for (const matchedCodeBlock of content.matchAll(codeBlockPattern)) {
+      const matchedContent = matchedCodeBlock[0];
+      const matchedIndex = matchedCodeBlock.index ?? 0;
+
+      if (matchedIndex > currentIndex) {
+        segments.push({
+          type: 'text',
+          content: content.slice(currentIndex, matchedIndex),
+        });
+      }
+
+      segments.push({
+        type: 'code',
+        content: matchedContent,
+      });
+      currentIndex = matchedIndex + matchedContent.length;
+    }
+
+    if (currentIndex < content.length) {
+      segments.push({
+        type: 'text',
+        content: content.slice(currentIndex),
+      });
+    }
+
+    return segments.length > 0
+      ? segments
+      : [
+          {
+            type: 'text' as const,
+            content,
+          },
+        ];
+  }
+
+  // Splits oversized fenced code blocks while preserving the fence so Discord still renders them as code.
+  // 큰 fenced code block도 Discord 렌더링이 깨지지 않도록 fence를 유지한 채 분할한다.
+  private splitDiscordCodeBlockContent(content: string, maxLength: number) {
+    if (content.length <= maxLength) {
+      return [content];
+    }
+
+    const matchedCodeBlock = /^```([^\n`]*)\n?([\s\S]*?)\n?```$/.exec(content);
+
+    if (!matchedCodeBlock) {
+      return this.splitDiscordPlainTextContent(content, maxLength);
+    }
+
+    const language = matchedCodeBlock[1];
+    const body = matchedCodeBlock[2];
+    const fenceHeader = `\`\`\`${language}`;
+    const fenceFooter = '```';
+    const availableBodyLength = maxLength - fenceHeader.length - fenceFooter.length - 2;
+
+    if (availableBodyLength <= 0) {
+      return [content];
+    }
+
+    const bodyChunks: string[] = [];
+    let currentChunk = '';
+
+    for (const line of body.split('\n')) {
+      const lineWithSpacing = currentChunk ? `\n${line}` : line;
+
+      if ((currentChunk + lineWithSpacing).length <= availableBodyLength) {
+        currentChunk += lineWithSpacing;
+        continue;
+      }
+
+      if (currentChunk) {
+        bodyChunks.push(currentChunk);
+        currentChunk = '';
+      }
+
+      if (line.length <= availableBodyLength) {
+        currentChunk = line;
+        continue;
+      }
+
+      for (let startIndex = 0; startIndex < line.length; startIndex += availableBodyLength) {
+        bodyChunks.push(line.slice(startIndex, startIndex + availableBodyLength));
+      }
+    }
+
+    if (currentChunk) {
+      bodyChunks.push(currentChunk);
+    }
+
+    return bodyChunks.map((bodyChunk) => `${fenceHeader}\n${bodyChunk}\n${fenceFooter}`);
   }
 
   // Schedules a Discord message to be deleted after the given delay.
