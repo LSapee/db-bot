@@ -245,6 +245,7 @@ model quizzes {
   id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   study_day_uuid     String       @unique @db.Uuid
   discord_message_id String?      @db.VarChar(50)
+  discord_thread_id  String?      @unique @db.VarChar(50)
   intro_text         String?
   published_at       DateTime?    @db.Timestamp(6)
   created_at         DateTime     @default(now()) @db.Timestamp(6)

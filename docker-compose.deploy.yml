@@ -12,7 +12,7 @@ services:
       ]
     restart: unless-stopped
     env_file:
-      - ${ENV_FILE:-.env}
+      - ${ENV_FILE:-secrets/.env}
     environment:
       TZ: ${TZ:-Asia/Seoul}
       PGTZ: ${TZ:-Asia/Seoul}
@@ -37,9 +37,10 @@ services:
     container_name: db-bot-app
     restart: unless-stopped
     env_file:
-      - ${ENV_FILE:-.env}
+      - ${ENV_FILE:-secrets/.env}
     environment:
       PORT: ${PORT:-3000}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       TZ: ${TZ:-Asia/Seoul}
     depends_on:
       postgres:

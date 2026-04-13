@@ -36,4 +36,4 @@ COPY --from=build /app/dist ./dist
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "export DATABASE_URL=\"${DATABASE_URL:-postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@postgres:5432/$POSTGRES_DB}\" && pnpm exec prisma migrate deploy && node dist/src/main.js"]
+CMD ["sh", "-c", "export DATABASE_URL=\"${DATABASE_URL:-postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@${POSTGRES_HOST:-postgres}:5432/$POSTGRES_DB}\" && pnpm exec prisma db push && node dist/src/main.js"]
