@@ -106,10 +106,10 @@ pnpm build
 pnpm start:dev
 ```
 
-필요하면 마이그레이션 적용:
+필요하면 Prisma schema 반영:
 
 ```bash
-pnpm prisma migrate deploy
+pnpm prisma db push
 ```
 
 ## Docker 배포
@@ -139,8 +139,8 @@ docker compose -f docker-compose.deploy.yml logs -f app
 
 참고:
 
-- 배포용 compose는 기본적으로 루트 `.env`를 읽는다.
-- 앱 컨테이너는 시작 시 `pnpm exec prisma migrate deploy`를 먼저 수행한다.
+- 배포용 compose는 기본적으로 `secrets/.env`를 읽는다.
+- 앱 컨테이너는 시작 시 `pnpm exec prisma db push`를 먼저 수행한다.
 - Postgres는 Docker 네트워크 안에서 `postgres` 서비스명으로 연결된다.
 - DB 포트 `5432`는 현재 외부 노출 상태이므로 운영 환경에서는 방화벽 정책을 같이 잡는 편이 좋다.
 
