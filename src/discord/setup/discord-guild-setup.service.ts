@@ -10,7 +10,9 @@ import {
 } from 'discord.js';
 import {
   discordDailyCategoryName,
+  discordDailyForumChannelOrder,
   discordRequiredChannels,
+  discordStudyPlanChannelName,
   discordStudyPlanWelcomeMessage,
 } from '../discord-channel.constants';
 
@@ -56,7 +58,7 @@ export class DiscordGuildSetupService {
         );
 
         if (
-          requiredChannel.name === 'db_study_plan' &&
+          requiredChannel.name === discordStudyPlanChannelName &&
           createdChannel.type === ChannelType.GuildText
         ) {
           await this.sendStudyPlanGreeting(createdChannel as TextChannel);
@@ -134,7 +136,9 @@ export class DiscordGuildSetupService {
     const studyPlanChannel = this.getStudyPlanChannel(guild);
 
     if (!studyPlanChannel) {
-      this.logger.warn(`Could not find a usable db_study_plan channel in guild ${guild.name}`);
+      this.logger.warn(
+        `Could not find a usable ${discordStudyPlanChannelName} channel in guild ${guild.name}`,
+      );
       return;
     }
 
@@ -152,7 +156,8 @@ export class DiscordGuildSetupService {
   // 최상단 채널과 daily 하위 채널을 기대하는 고정 순서로 재정렬한다.
   private async ensureChannelOrdering(guild: Guild) {
     const studyPlanChannel = guild.channels.cache.find(
-      (channel) => channel?.name === 'db_study_plan' && channel.type === ChannelType.GuildText,
+      (channel) =>
+        channel?.name === discordStudyPlanChannelName && channel.type === ChannelType.GuildText,
     ) as TextChannel | undefined;
     const dailyCategory = guild.channels.cache.find(
       (channel) =>
@@ -184,13 +189,6 @@ export class DiscordGuildSetupService {
         position: index,
       })),
     );
-    const orderedDailyChannels = [
-      'db_tutor',
-      'db_quiz',
-      'db_answer',
-      'user_ask',
-    ];
-
     const currentDailyChannels = [...guild.channels.cache.values()]
       .filter((channel) => !channel.isThread() && channel.parentId === dailyCategory.id)
       .sort(
@@ -198,7 +196,7 @@ export class DiscordGuildSetupService {
           this.getChannelOrderValue(leftChannel) - this.getChannelOrderValue(rightChannel),
       );
 
-    const prioritizedDailyChannels = orderedDailyChannels
+    const prioritizedDailyChannels = discordDailyForumChannelOrder
       .map((channelName) =>
         currentDailyChannels.find((channel) => channel.name === channelName),
       )
@@ -207,7 +205,10 @@ export class DiscordGuildSetupService {
     const reorderedDailyChannels = [
       ...prioritizedDailyChannels,
       ...currentDailyChannels.filter(
-        (channel) => !orderedDailyChannels.includes(channel.name),
+        (channel) =>
+          !discordDailyForumChannelOrder.includes(
+            channel.name as (typeof discordDailyForumChannelOrder)[number],
+          ),
       ),
     ];
 
@@ -270,7 +271,7 @@ export class DiscordGuildSetupService {
       await greetingMessage.pin();
     } catch (error) {
       this.logger.warn(
-        `Failed to pin db_study_plan greeting message ${greetingMessage.id}: ${String(error)}`,
+        `Failed to pin ${discordStudyPlanChannelName} greeting message ${greetingMessage.id}: ${String(error)}`,
       );
     }
   }
@@ -279,7 +280,7 @@ export class DiscordGuildSetupService {
   // db_study_plan 채널이 존재하고 일반 텍스트 채널이면 반환한다.
   private getStudyPlanChannel(guild: Guild) {
     const studyPlanChannel = guild.channels.cache.find(
-      (channel) => channel?.name === 'db_study_plan',
+      (channel) => channel?.name === discordStudyPlanChannelName,
     );
 
     if (!studyPlanChannel || studyPlanChannel.type !== ChannelType.GuildText) {

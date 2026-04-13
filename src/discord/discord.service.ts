@@ -1,6 +1,12 @@
 import { Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { ChannelType, Client, Events, GatewayIntentBits, Message } from 'discord.js';
 import { DiscordDailyChannelService } from './daily/discord-daily-channel.service';
+import {
+  discordReadOnlyForumChannelNames,
+  discordStudyPlanChannelName,
+  discordSubmissionForumChannelNames,
+  discordUserAskForumChannelName,
+} from './discord-channel.constants';
 import { DiscordConfigService } from './discord-config.service';
 import { DiscordGuildSetupService } from './setup/discord-guild-setup.service';
 import { DiscordStudyPlanChannelService } from './study-plan/discord-study-plan-channel.service';
@@ -26,24 +32,32 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
     private readonly discordUserThreadService: DiscordUserThreadService,
   ) {
     this.client.once(Events.ClientReady, (readyClient) => {
-      this.logger.log(`Discord bot connected as ${readyClient.user.tag}`);
-      void this.discordGuildSetupService.ensureChannelsForJoinedGuilds(readyClient);
+      this.runDiscordEventHandler('ClientReady', async () => {
+        this.logger.log(`Discord bot connected as ${readyClient.user.tag}`);
+        await this.discordGuildSetupService.ensureChannelsForJoinedGuilds(readyClient);
+      });
     });
     this.client.on(Events.GuildCreate, (guild) => {
       if (!this.client.isReady()) {
         return;
       }
 
-      void this.discordGuildSetupService.ensureChannelsForGuild(this.client, guild);
+      this.runDiscordEventHandler(`GuildCreate:${guild.id}`, async () => {
+        await this.discordGuildSetupService.ensureChannelsForGuild(this.client as Client<true>, guild);
+      });
     });
     this.client.on(Events.GuildDelete, (guild) => {
-      void this.discordDailyChannelService.markGuildStudyPlansAsOrphaned(
-        guild.id,
-        '봇이 서버에서 제거되었거나 서버가 삭제되었습니다.',
-      );
+      this.runDiscordEventHandler(`GuildDelete:${guild.id}`, async () => {
+        await this.discordDailyChannelService.markGuildStudyPlansAsOrphaned(
+          guild.id,
+          '봇이 서버에서 제거되었거나 서버가 삭제되었습니다.',
+        );
+      });
     });
     this.client.on(Events.MessageCreate, (message) => {
-      void this.handleMessageCreate(message);
+      this.runDiscordEventHandler(`MessageCreate:${message.id}`, async () => {
+        await this.handleMessageCreate(message);
+      });
     });
   }
 
@@ -81,6 +95,15 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
     return this.client;
   }
 
+  private runDiscordEventHandler(eventLabel: string, handler: () => Promise<void>) {
+    handler().catch((error) => {
+      this.logger.error(
+        `Discord event handler failed: ${eventLabel}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    });
+  }
+
   // Routes Discord messages to the appropriate channel-specific handler.
   // Discord 메시지를 채널 성격에 따라 적절한 핸들러로 라우팅한다.
   private async handleMessageCreate(message: Message) {
@@ -88,7 +111,10 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
       return;
     }
 
-    if (message.channel.type === ChannelType.GuildText && message.channel.name === 'db_study_plan') {
+    if (
+      message.channel.type === ChannelType.GuildText &&
+      message.channel.name === discordStudyPlanChannelName
+    ) {
       await this.discordStudyPlanChannelService.handleMessage(message);
       return;
     }
@@ -96,7 +122,9 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
     if (
       message.channel.isThread() &&
       message.channel.parent?.type === ChannelType.GuildForum &&
-      ['user_answer', 'db_quiz'].includes(message.channel.parent.name)
+      discordSubmissionForumChannelNames.includes(
+        message.channel.parent.name as (typeof discordSubmissionForumChannelNames)[number],
+      )
     ) {
       await this.discordUserThreadService.handleAnswerSubmission(message);
       return;
@@ -105,7 +133,7 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
     if (
       message.channel.isThread() &&
       message.channel.parent?.type === ChannelType.GuildForum &&
-      message.channel.parent.name === 'user_ask'
+      message.channel.parent.name === discordUserAskForumChannelName
     ) {
       await this.discordUserThreadService.handleQuestion(message);
       return;
@@ -114,7 +142,9 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
     if (
       message.channel.isThread() &&
       message.channel.parent?.type === ChannelType.GuildForum &&
-      ['db_tutor', 'db_answer'].includes(message.channel.parent.name)
+      discordReadOnlyForumChannelNames.includes(
+        message.channel.parent.name as (typeof discordReadOnlyForumChannelNames)[number],
+      )
     ) {
       await this.discordDailyChannelService.handleReadOnlyMessage(message);
     }

@@ -3,7 +3,9 @@ import { ChannelType, ForumChannel, Guild, Message, TextChannel } from 'discord.
 import {
   discordArchiveStudyPlanInvalidSelectionMessage,
   discordActiveStudyPlanListActionGuideMessage,
+  discordAnswerForumChannelName,
   discordCancelledStudyPlanListActionGuideMessage,
+  discordQuizForumChannelName,
   createDiscordCourseConfirmationPromptMessage,
   createDiscordCourseSelectionPromptMessage,
   createDiscordDetailedPlanLoadingMessage,
@@ -26,7 +28,10 @@ import {
   discordStudyPlanInvalidDurationMessage,
   discordStudyPlanCancelledMessage,
   discordStudyPlanNewPlanPromptMessage,
+  discordStudyPlanChannelName,
+  discordTutorForumChannelName,
   discordUnsupportedStudyPlanCommandMessage,
+  discordUserAskForumChannelName,
   discordStudyPlanWelcomeMessage,
 } from '../discord-channel.constants';
 import {
@@ -37,6 +42,7 @@ import {
   OpenAiService,
 } from '../../openai/openai.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DiscordStudyPlanStorageService } from './discord-study-plan-storage.service';
 import {
   CourseConfirmationState,
   CourseSelectionState,
@@ -112,6 +118,7 @@ export class DiscordStudyPlanService {
   constructor(
     private readonly openAiService: OpenAiService,
     private readonly prismaService: PrismaService,
+    private readonly discordStudyPlanStorageService: DiscordStudyPlanStorageService,
   ) {}
 
   private createNextScheduledPublishAt(baseTime = new Date()) {
@@ -530,7 +537,7 @@ export class DiscordStudyPlanService {
     );
     const isQuizThread =
       message.channel.parent?.type === ChannelType.GuildForum &&
-      message.channel.parent.name === 'db_quiz';
+      message.channel.parent.name === discordQuizForumChannelName;
     const submissionThreadContext = directSubmissionContext
       ? null
       : isQuizThread
@@ -561,8 +568,11 @@ export class DiscordStudyPlanService {
       return;
     }
 
-    const guildRecord = await this.ensureDiscordGuild(message);
-    const memberRecord = await this.ensureDiscordMember(message, guildRecord.id);
+    const guildRecord = await this.discordStudyPlanStorageService.ensureDiscordGuild(message);
+    const memberRecord = await this.discordStudyPlanStorageService.ensureDiscordMember(
+      message,
+      guildRecord.id,
+    );
     const submissionCount = await this.prismaService.submissions.count({
       where: {
         quiz_item_uuid: targetQuizItem.id,
@@ -992,7 +1002,7 @@ export class DiscordStudyPlanService {
     const storedTemplateMetadata = this.extractStoredTemplateMetadata(activeStudyPlan.outline_raw);
     const cachedStudyDayMaterials =
       storedTemplateMetadata.planTemplateId
-        ? await this.findStoredStudyDayMaterialTemplate(
+        ? await this.discordStudyPlanStorageService.findStoredStudyDayMaterialTemplate(
             storedTemplateMetadata.planTemplateId,
             targetStudyDay.day_number,
           )
@@ -1338,7 +1348,7 @@ export class DiscordStudyPlanService {
         );
 
         if (storedTemplateMetadata.planTemplateId) {
-          await this.storeStudyDayMaterialTemplate(
+          await this.discordStudyPlanStorageService.storeStudyDayMaterialTemplate(
             storedTemplateMetadata.planTemplateId,
             queuedJob.study_days.day_number,
             batchResult.generatedMaterials,
@@ -1575,7 +1585,7 @@ export class DiscordStudyPlanService {
       );
       const cachedStudyDayMaterials =
         storedTemplateMetadata.planTemplateId
-          ? await this.findStoredStudyDayMaterialTemplate(
+          ? await this.discordStudyPlanStorageService.findStoredStudyDayMaterialTemplate(
               storedTemplateMetadata.planTemplateId,
               queuedJob.study_days.day_number,
             )
@@ -1591,7 +1601,7 @@ export class DiscordStudyPlanService {
         ));
 
       if (!cachedStudyDayMaterials && storedTemplateMetadata.planTemplateId) {
-        await this.storeStudyDayMaterialTemplate(
+        await this.discordStudyPlanStorageService.storeStudyDayMaterialTemplate(
           storedTemplateMetadata.planTemplateId,
           queuedJob.study_days.day_number,
           generatedMaterials,
@@ -1700,7 +1710,7 @@ export class DiscordStudyPlanService {
   }
 
   private async reportMissingDiscordChannel(guild: Guild, error: MissingDiscordChannelError) {
-    if (error.channelName === 'db_study_plan') {
+    if (error.channelName === discordStudyPlanChannelName) {
       this.logger.warn(
         `Failed to notify missing Discord channel because db_study_plan is missing in guild ${guild.id}.`,
       );
@@ -2073,7 +2083,7 @@ export class DiscordStudyPlanService {
     const storedTemplateMetadata = this.extractStoredTemplateMetadata(activeStudyPlan.outline_raw);
     const cachedStudyDayMaterials =
       storedTemplateMetadata.planTemplateId
-        ? await this.findStoredStudyDayMaterialTemplate(
+        ? await this.discordStudyPlanStorageService.findStoredStudyDayMaterialTemplate(
             storedTemplateMetadata.planTemplateId,
             targetDayNumber,
           )
@@ -2088,7 +2098,7 @@ export class DiscordStudyPlanService {
       ));
 
     if (!cachedStudyDayMaterials && storedTemplateMetadata.planTemplateId) {
-      await this.storeStudyDayMaterialTemplate(
+      await this.discordStudyPlanStorageService.storeStudyDayMaterialTemplate(
         storedTemplateMetadata.planTemplateId,
         targetDayNumber,
         generatedMaterials,
@@ -2353,8 +2363,11 @@ export class DiscordStudyPlanService {
       return;
     }
 
-    const guildRecord = await this.ensureDiscordGuild(message);
-    const memberRecord = await this.ensureDiscordMember(message, guildRecord.id);
+    const guildRecord = await this.discordStudyPlanStorageService.ensureDiscordGuild(message);
+    const memberRecord = await this.discordStudyPlanStorageService.ensureDiscordMember(
+      message,
+      guildRecord.id,
+    );
     const todayQuestionCount = await this.prismaService.lesson_questions.count({
       where: {
         study_day_uuid: studyQuestionContext.currentStudyDay.id,
@@ -2678,8 +2691,9 @@ export class DiscordStudyPlanService {
     courseSelectionState: CourseConfirmationState,
   ) {
     try {
-      const cachedStudyPlanTemplate = await this.findStoredStudyPlanTemplate(
+      const cachedStudyPlanTemplate = await this.discordStudyPlanStorageService.findStoredStudyPlanTemplate(
         courseSelectionState.previewTemplateId,
+        this.studyPlanTemplatePromptVersion,
       );
 
       const selectedStudyPlanTemplate =
@@ -2689,7 +2703,10 @@ export class DiscordStudyPlanService {
             throw new Error('OPENAI_API_KEY가 설정되지 않아 아직 상세 일정을 생성할 수 없습니다.');
           }
 
-          await this.trackCourseGenerationUsage(message, 'DETAILED_PLAN');
+          await this.discordStudyPlanStorageService.trackCourseGenerationUsage(
+            message,
+            'DETAILED_PLAN',
+          );
           await this.sendChannelMessage(
             message,
             createDiscordDetailedPlanLoadingMessage(courseSelectionState.totalDays),
@@ -2701,8 +2718,9 @@ export class DiscordStudyPlanService {
             courseSelectionState.selectedCourseContent,
           );
 
-          return this.storeStudyPlanTemplate(
+          return this.discordStudyPlanStorageService.storeStudyPlanTemplate(
             courseSelectionState.previewTemplateId,
+            this.studyPlanTemplatePromptVersion,
             generatedStudyPlan,
           );
         })());
@@ -2744,9 +2762,10 @@ export class DiscordStudyPlanService {
     selectedCourseName: StudyCourseName,
   ) {
     try {
-      const cachedCoursePreview = await this.findStoredStudyCoursePreviewTemplate(
+      const cachedCoursePreview = await this.discordStudyPlanStorageService.findStoredStudyCoursePreviewTemplate(
         courseSelectionState.totalDays,
         selectedCourseName,
+        this.studyCoursePreviewTemplatePromptVersion,
       );
 
       const selectedCoursePreviewTemplate =
@@ -2756,7 +2775,10 @@ export class DiscordStudyPlanService {
             throw new Error('OPENAI_API_KEY가 설정되지 않아 아직 코스 미리보기를 생성할 수 없습니다.');
           }
 
-          await this.trackCourseGenerationUsage(message, 'COURSE_PREVIEW');
+          await this.discordStudyPlanStorageService.trackCourseGenerationUsage(
+            message,
+            'COURSE_PREVIEW',
+          );
           await this.sendChannelMessage(
             message,
             createDiscordStudyCoursePreviewLoadingMessage(courseSelectionState.totalDays),
@@ -2767,9 +2789,10 @@ export class DiscordStudyPlanService {
             selectedCourseName,
           );
 
-          return this.storeStudyCoursePreviewTemplate(
+          return this.discordStudyPlanStorageService.storeStudyCoursePreviewTemplate(
             courseSelectionState.totalDays,
             selectedCourseName,
+            this.studyCoursePreviewTemplatePromptVersion,
             generatedCoursePreview,
           );
         })());
@@ -2802,286 +2825,6 @@ export class DiscordStudyPlanService {
     }
   }
 
-  private async findStoredStudyCoursePreviewTemplate(
-    totalDays: number,
-    selectedCourseName: StudyCourseName,
-  ) {
-    const prismaClient = this.prismaService as any;
-    const existingTemplate = await prismaClient.study_course_preview_templates.findFirst({
-      where: {
-        total_days: totalDays,
-        course_name: selectedCourseName,
-        prompt_version: this.studyCoursePreviewTemplatePromptVersion,
-      },
-      orderBy: {
-        created_at: 'asc',
-      },
-    });
-
-    if (!existingTemplate) {
-      return null;
-    }
-
-    await prismaClient.study_course_preview_templates.update({
-      where: {
-        id: existingTemplate.id,
-      },
-      data: {
-        usage_count: {
-          increment: 1,
-        },
-      },
-    });
-
-    return {
-      id: existingTemplate.id as string,
-      contentText: existingTemplate.content_text as string,
-    };
-  }
-
-  private async storeStudyCoursePreviewTemplate(
-    totalDays: number,
-    selectedCourseName: StudyCourseName,
-    contentText: string,
-  ) {
-    const prismaClient = this.prismaService as any;
-
-    const createdTemplate = await prismaClient.study_course_preview_templates.create({
-      data: {
-        total_days: totalDays,
-        course_name: selectedCourseName,
-        prompt_version: this.studyCoursePreviewTemplatePromptVersion,
-        content_text: contentText,
-        usage_count: 1,
-      },
-    });
-
-    return {
-      id: createdTemplate.id as string,
-      contentText: createdTemplate.content_text as string,
-    };
-  }
-
-  private async findDiscordUserByDiscordUserId(discordUserId: string) {
-    const prismaClient = this.prismaService as any;
-
-    return prismaClient.discord_users.findUnique({
-      where: {
-        discord_user_id: discordUserId,
-      },
-    });
-  }
-
-  private async ensureDiscordUser(message: Message) {
-    const prismaClient = this.prismaService as any;
-    const existingDiscordUser = await this.findDiscordUserByDiscordUserId(message.author.id);
-
-    if (!existingDiscordUser) {
-      return prismaClient.discord_users.create({
-        data: {
-          discord_user_id: message.author.id,
-          username: message.author.username,
-        },
-      });
-    }
-
-    if (existingDiscordUser.username !== message.author.username) {
-      return prismaClient.discord_users.update({
-        where: {
-          id: existingDiscordUser.id,
-        },
-        data: {
-          username: message.author.username,
-        },
-      });
-    }
-
-    return existingDiscordUser;
-  }
-
-  private async trackCourseGenerationUsage(
-    message: Message,
-    usageType: 'COURSE_PREVIEW' | 'DETAILED_PLAN',
-  ) {
-    const prismaClient = this.prismaService as any;
-    const discordUser = await this.ensureDiscordUser(message);
-    const now = new Date();
-    const usageDate = new Date(
-      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T00:00:00+09:00`,
-    );
-
-    const existingUsage = await prismaClient.course_generation_usages.findUnique({
-      where: {
-        discord_user_uuid_usage_date_usage_type: {
-          discord_user_uuid: discordUser.id,
-          usage_date: usageDate,
-          usage_type: usageType,
-        },
-      },
-    });
-
-    if (existingUsage) {
-      return prismaClient.course_generation_usages.update({
-        where: {
-          id: existingUsage.id,
-        },
-        data: {
-          request_count: {
-            increment: 1,
-          },
-        },
-      });
-    }
-
-    return prismaClient.course_generation_usages.create({
-      data: {
-        discord_user_uuid: discordUser.id,
-        usage_date: usageDate,
-        usage_type: usageType,
-        request_count: 1,
-      },
-    });
-  }
-
-  private async findStoredStudyPlanTemplate(previewTemplateId: string) {
-    const prismaClient = this.prismaService as any;
-    const existingTemplate = await prismaClient.study_plan_templates.findFirst({
-      where: {
-        course_preview_template_uuid: previewTemplateId,
-        prompt_version: this.studyPlanTemplatePromptVersion,
-      },
-      orderBy: {
-        created_at: 'asc',
-      },
-    });
-
-    if (!existingTemplate) {
-      return null;
-    }
-
-    await prismaClient.study_plan_templates.update({
-      where: {
-        id: existingTemplate.id,
-      },
-      data: {
-        usage_count: {
-          increment: 1,
-        },
-      },
-    });
-
-    const generatedStudyPlan = parseStoredGeneratedStudyPlan(existingTemplate.plan_raw);
-
-    if (!generatedStudyPlan) {
-      return null;
-    }
-
-    return {
-      id: existingTemplate.id as string,
-      generatedStudyPlan,
-    };
-  }
-
-  private async storeStudyPlanTemplate(
-    previewTemplateId: string,
-    generatedStudyPlan: GeneratedStudyPlan,
-  ) {
-    const prismaClient = this.prismaService as any;
-    const createdTemplate = await prismaClient.study_plan_templates.create({
-      data: {
-        course_preview_template_uuid: previewTemplateId,
-        prompt_version: this.studyPlanTemplatePromptVersion,
-        plan_title: generatedStudyPlan.planTitle,
-        goal_text: generatedStudyPlan.goalText,
-        plan_raw: generatedStudyPlan,
-        usage_count: 1,
-      },
-    });
-
-    return {
-      id: createdTemplate.id as string,
-      generatedStudyPlan,
-    };
-  }
-
-  private async findStoredStudyDayMaterialTemplate(planTemplateId: string, dayNumber: number) {
-    const prismaClient = this.prismaService as any;
-    const existingTemplate = await prismaClient.study_day_material_templates.findUnique({
-      where: {
-        study_plan_template_uuid_day_number: {
-          study_plan_template_uuid: planTemplateId,
-          day_number: dayNumber,
-        },
-      },
-    });
-
-    if (!existingTemplate) {
-      return null;
-    }
-
-    await prismaClient.study_day_material_templates.update({
-      where: {
-        id: existingTemplate.id,
-      },
-      data: {
-        usage_count: {
-          increment: 1,
-        },
-      },
-    });
-
-    return this.parseStoredStudyDayMaterialsTemplate(existingTemplate.materials_raw);
-  }
-
-  private async storeStudyDayMaterialTemplate(
-    planTemplateId: string,
-    dayNumber: number,
-    generatedMaterials: GeneratedStudyDayMaterials,
-  ) {
-    const prismaClient = this.prismaService as any;
-
-    await prismaClient.study_day_material_templates.upsert({
-      where: {
-        study_plan_template_uuid_day_number: {
-          study_plan_template_uuid: planTemplateId,
-          day_number: dayNumber,
-        },
-      },
-      update: {
-        materials_raw: generatedMaterials,
-      },
-      create: {
-        study_plan_template_uuid: planTemplateId,
-        day_number: dayNumber,
-        materials_raw: generatedMaterials,
-        usage_count: 1,
-      },
-    });
-  }
-
-  private parseStoredStudyDayMaterialsTemplate(materialsRaw: unknown) {
-    if (!materialsRaw || typeof materialsRaw !== 'object') {
-      return null;
-    }
-
-    const rawMaterials = materialsRaw as {
-      summaryText?: unknown;
-      contentText?: unknown;
-      quizIntroText?: unknown;
-      quizItems?: unknown;
-    };
-
-    if (
-      typeof rawMaterials.summaryText !== 'string' ||
-      typeof rawMaterials.contentText !== 'string' ||
-      typeof rawMaterials.quizIntroText !== 'string' ||
-      !Array.isArray(rawMaterials.quizItems)
-    ) {
-      return null;
-    }
-
-    return rawMaterials as GeneratedStudyDayMaterials;
-  }
 
   private extractStoredTemplateMetadata(outlineRaw: unknown) {
     if (!outlineRaw || typeof outlineRaw !== 'object') {
@@ -3148,7 +2891,7 @@ export class DiscordStudyPlanService {
 
     try {
       const firstStudyDay = getFirstStudyDay(startSelectionState.generatedStudyPlan);
-      const cachedFirstDayMaterials = await this.findStoredStudyDayMaterialTemplate(
+      const cachedFirstDayMaterials = await this.discordStudyPlanStorageService.findStoredStudyDayMaterialTemplate(
         startSelectionState.planTemplateId,
         firstStudyDay.dayNumber,
       );
@@ -3171,7 +2914,7 @@ export class DiscordStudyPlanService {
             firstStudyDay,
           );
 
-          await this.storeStudyDayMaterialTemplate(
+          await this.discordStudyPlanStorageService.storeStudyDayMaterialTemplate(
             startSelectionState.planTemplateId,
             firstStudyDay.dayNumber,
             generatedFirstDayMaterials,
@@ -4260,8 +4003,11 @@ export class DiscordStudyPlanService {
       throw new Error('Guild id is required to persist a study plan.');
     }
 
-    const guildRecord = await this.ensureDiscordGuild(message);
-    const memberRecord = await this.ensureDiscordMember(message, guildRecord.id);
+    const guildRecord = await this.discordStudyPlanStorageService.ensureDiscordGuild(message);
+    const memberRecord = await this.discordStudyPlanStorageService.ensureDiscordMember(
+      message,
+      guildRecord.id,
+    );
     const startedAt = new Date();
 
     return this.prismaService.$transaction(async (tx) => {
@@ -4398,102 +4144,6 @@ export class DiscordStudyPlanService {
     });
   }
 
-  // Ensures the current Discord guild exists in the database before saving plan data.
-  // 계획 저장 전에 현재 Discord 서버 정보가 DB에 존재하도록 보장한다.
-  private async ensureDiscordGuild(message: Message) {
-    if (!message.guild) {
-      throw new Error('Guild data is required to persist a study plan.');
-    }
-
-    const guildOwnerId = message.guild.ownerId;
-    const ownerDiscordUser =
-      guildOwnerId === message.author.id
-        ? await this.ensureDiscordUser(message)
-        : await this.findDiscordUserByDiscordUserId(guildOwnerId);
-    const existingGuild = await this.prismaService.discord_guilds.findUnique({
-      where: {
-        discord_guild_id: message.guild.id,
-      },
-    });
-
-    if (existingGuild) {
-      const existingGuildOwnerId = (existingGuild as {
-        owner_discord_user_id?: string | null;
-      }).owner_discord_user_id;
-
-      if (
-        existingGuild.name !== message.guild.name ||
-        existingGuildOwnerId !== guildOwnerId
-      ) {
-        return this.prismaService.discord_guilds.update({
-          where: {
-            id: existingGuild.id,
-          },
-          data: {
-            name: message.guild.name,
-            owner_discord_user_id: guildOwnerId,
-            owner_discord_user_uuid: ownerDiscordUser?.id ?? null,
-          } as any,
-        });
-      }
-
-      return existingGuild;
-    }
-
-    return this.prismaService.discord_guilds.create({
-      data: {
-        discord_guild_id: message.guild.id,
-        name: message.guild.name,
-        owner_discord_user_id: guildOwnerId,
-        owner_discord_user_uuid: ownerDiscordUser?.id ?? null,
-      } as any,
-    });
-  }
-
-  // Ensures the current guild owner exists in the database before saving plan data.
-  // 계획 저장 전에 현재 서버장 정보가 DB에 존재하도록 보장한다.
-  private async ensureDiscordMember(message: Message, guildUuid: string) {
-    const discordUser = await this.ensureDiscordUser(message);
-    const existingMember = await this.prismaService.discord_members.findFirst({
-      where: {
-        guild_uuid: guildUuid,
-        discord_user_id: message.author.id,
-      },
-    });
-
-    if (existingMember) {
-      if (
-        (existingMember as { discord_user_uuid?: string | null }).discord_user_uuid !==
-          discordUser.id ||
-        existingMember.username !== message.author.username ||
-        existingMember.display_name !== (message.member?.displayName ?? null)
-      ) {
-        return this.prismaService.discord_members.update({
-          where: {
-            id: existingMember.id,
-          },
-          data: {
-            discord_user_uuid: discordUser.id,
-            username: message.author.username,
-            display_name: message.member?.displayName ?? null,
-          } as any,
-        });
-      }
-
-      return existingMember;
-    }
-
-    return this.prismaService.discord_members.create({
-      data: {
-        guild_uuid: guildUuid,
-        discord_user_id: message.author.id,
-        discord_user_uuid: discordUser.id,
-        username: message.author.username,
-        display_name: message.member?.displayName ?? null,
-      } as any,
-    });
-  }
-
   // Checks whether the current message was sent by the guild owner.
   // 현재 메시지를 보낸 사용자가 서버장인지 확인한다.
   private isGuildOwnerMessage(message: Message) {
@@ -4517,10 +4167,10 @@ export class DiscordStudyPlanService {
     try {
       await guild.channels.fetch();
 
-      const tutorChannel = this.getForumChannelByName(guild, 'db_tutor');
-      const quizChannel = this.getForumChannelByName(guild, 'db_quiz');
-      const answerChannel = this.getForumChannelByName(guild, 'db_answer');
-      const userAskChannel = this.getForumChannelByName(guild, 'user_ask');
+      const tutorChannel = this.getForumChannelByName(guild, discordTutorForumChannelName);
+      const quizChannel = this.getForumChannelByName(guild, discordQuizForumChannelName);
+      const answerChannel = this.getForumChannelByName(guild, discordAnswerForumChannelName);
+      const userAskChannel = this.getForumChannelByName(guild, discordUserAskForumChannelName);
 
       const tutorThread = await this.createForumThreadWithChunks(
         tutorChannel,
@@ -4638,11 +4288,12 @@ export class DiscordStudyPlanService {
     await guild.channels.fetch();
 
     const studyPlanChannel = guild.channels.cache.find(
-      (channel) => channel?.name === 'db_study_plan' && channel.type === ChannelType.GuildText,
+      (channel) =>
+        channel?.name === discordStudyPlanChannelName && channel.type === ChannelType.GuildText,
     );
 
     if (!studyPlanChannel) {
-      throw new MissingDiscordChannelError('db_study_plan', 'text');
+      throw new MissingDiscordChannelError(discordStudyPlanChannelName, 'text');
     }
 
     return studyPlanChannel as TextChannel;

@@ -5,6 +5,7 @@ import { DiscordGuildSetupService } from './setup/discord-guild-setup.service';
 import { DiscordSchedulerService } from './scheduler/discord-scheduler.service';
 import { DiscordService } from './discord.service';
 import { DiscordStudyPlanChannelService } from './study-plan/discord-study-plan-channel.service';
+import { DiscordStudyPlanStorageService } from './study-plan/discord-study-plan-storage.service';
 import { DiscordStudyPlanService } from './study-plan/discord-study-plan.service';
 import { DiscordUserThreadService } from './user-thread/discord-user-thread.service';
 
@@ -15,6 +16,7 @@ import { DiscordUserThreadService } from './user-thread/discord-user-thread.serv
     DiscordGuildSetupService,
     DiscordSchedulerService,
     DiscordStudyPlanChannelService,
+    DiscordStudyPlanStorageService,
     DiscordDailyChannelService,
     DiscordUserThreadService,
     DiscordService,

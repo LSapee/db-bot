@@ -1,6 +1,29 @@
 import { ChannelType } from 'discord.js';
 
 export const discordDailyCategoryName = 'db_daily';
+export const discordStudyPlanChannelName = 'db_study_plan';
+export const discordTutorForumChannelName = 'db_tutor';
+export const discordQuizForumChannelName = 'db_quiz';
+export const discordUserAskForumChannelName = 'user_ask';
+export const discordAnswerForumChannelName = 'db_answer';
+export const discordLegacyUserAnswerForumChannelName = 'user_answer';
+
+export const discordSubmissionForumChannelNames = [
+  discordQuizForumChannelName,
+  discordLegacyUserAnswerForumChannelName,
+] as const;
+
+export const discordReadOnlyForumChannelNames = [
+  discordTutorForumChannelName,
+  discordAnswerForumChannelName,
+] as const;
+
+export const discordDailyForumChannelOrder = [
+  discordTutorForumChannelName,
+  discordQuizForumChannelName,
+  discordAnswerForumChannelName,
+  discordUserAskForumChannelName,
+] as const;
 
 export const discordStudyPlanDurationRecommendationMessage =
   [
@@ -267,27 +290,27 @@ export const discordCancelledStudyPlanListActionGuideMessage = [
 
 export const discordRequiredChannels = [
   {
-    name: 'db_study_plan',
+    name: discordStudyPlanChannelName,
     type: ChannelType.GuildText,
     useDailyCategory: false,
   },
   {
-    name: 'db_tutor',
+    name: discordTutorForumChannelName,
     type: ChannelType.GuildForum,
     useDailyCategory: true,
   },
   {
-    name: 'db_quiz',
+    name: discordQuizForumChannelName,
     type: ChannelType.GuildForum,
     useDailyCategory: true,
   },
   {
-    name: 'user_ask',
+    name: discordUserAskForumChannelName,
     type: ChannelType.GuildForum,
     useDailyCategory: true,
   },
   {
-    name: 'db_answer',
+    name: discordAnswerForumChannelName,
     type: ChannelType.GuildForum,
     useDailyCategory: true,
   },
